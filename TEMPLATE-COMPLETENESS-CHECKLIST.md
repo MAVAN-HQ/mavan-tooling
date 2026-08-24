@@ -104,8 +104,14 @@ carry them):**
   anywhere real regardless of what's edited
 
 None of these block "drop content into siteData.ts alone" — they're
-cosmetic/consistency gaps, not functional ones. Fix opportunistically,
-not urgently.
+cosmetic/consistency gaps, not functional ones. **Deliberately deferred**
+(Eli 2026-08-24: "leave for now but backlog so i do at some point") — not
+forgotten, just not urgent. Fix in #1 and #2 whenever there's a natural
+opening (e.g. touching `SiteFooter.astro` or the gallery route for
+something else anyway):
+- [ ] `SiteFooter.astro`'s "Company" footer-column heading → siteData field
+- [ ] `gallery/[slug].astro`'s `backLabel`/`backHref` → siteData-driven,
+      matching the services route's already-correct pattern
 
 **Watch for this pattern specifically:** a heading assembled from siteData
 props with a hardcoded literal *connective phrase* stitched in between
@@ -158,7 +164,7 @@ see `project_mavan_template3` memory. Don't repeat it.)
 | Build/check/git clean | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SEO framework | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Security headers + CSP | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Data injectability | 2 minor gaps | n/a (real content) | 2 minor gaps | n/a (real content) | ✅ fixed 2026-08-24 | n/a (real content) |
+| Data injectability | 2 minor gaps (deferred) | n/a (real content) | 2 minor gaps (deferred) | n/a (real content) | ✅ fixed 2026-08-24 | n/a (real content) |
 | Demo `site` = real URL, not example.com | n/a | ✅ | n/a | ✅ | n/a | ✅ |
 
 `n/a` = the injectability check is about the *base* template only; a
