@@ -158,7 +158,7 @@ see `project_mavan_template3` memory. Don't repeat it.)
 | Build/check/git clean | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SEO framework | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Security headers + CSP | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Data injectability | 2 minor gaps | n/a (real content) | 2 minor gaps | n/a (real content) | **5 real gaps** | n/a (real content) |
+| Data injectability | 2 minor gaps | n/a (real content) | 2 minor gaps | n/a (real content) | ✅ fixed 2026-08-24 | n/a (real content) |
 | Demo `site` = real URL, not example.com | n/a | ✅ | n/a | ✅ | n/a | ✅ |
 
 `n/a` = the injectability check is about the *base* template only; a
@@ -181,12 +181,14 @@ pattern" callout above): `ConcernsSection.astro:63`, `WhatWeOfferSection
 literal connective sentence fragment around otherwise-siteData-driven
 heading pieces, including vertical-specific wording ("leading medspa").
 `ContactFormSection.astro:48`'s "Procedure you're interested in" label
-is borderline (medspa-specific but arguably intentional for this
-template's vertical). None break the build or leave content missing —
-but a new client (especially outside med-spa) can't reword these five
-spots without touching component code. Not fixed yet as of this
-checklist's creation — flagged to Eli, awaiting a decision on
-fix-now vs. log-for-later.
+was the same class of issue. **Fixed 2026-08-24**: all five extracted to
+new siteData fields (`introPrefix`/`introConnector`/`introEmPrefix`/
+`introSuffix` on `concerns`, `headingPrefix` on `whatWeOffer` and its
+`philosophy` sub-object and on `whyChooseUs`, `interestLabel` on
+`contact`); base template's defaults bracket the vertical-locked word
+("leading `[Business Type]` in", "`[Procedure]` you're interested in")
+matching the file's existing convention. Demo's rendered copy confirmed
+byte-identical in a fresh build — pure refactor, no visual change.
 
 ---
 
