@@ -159,13 +159,14 @@ see `project_mavan_template3` memory. Don't repeat it.)
 
 ## Current status by template (as of 2026-08-24 full audit)
 
-| | #1 | #1-demo | #2 | #2-demo | #3 | #3-demo |
-|---|---|---|---|---|---|---|
-| Build/check/git clean | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| SEO framework | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Security headers + CSP | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Data injectability | 2 minor gaps (deferred) | n/a (real content) | 2 minor gaps (deferred) | n/a (real content) | ✅ fixed 2026-08-24 | n/a (real content) |
-| Demo `site` = real URL, not example.com | n/a | ✅ | n/a | ✅ | n/a | ✅ |
+| | #1 | #1-demo | #2 | #2-demo | #3 | #3-demo | #4 | #4-demo |
+|---|---|---|---|---|---|---|---|---|
+| Build/check/git clean | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 2026-08-26 | ✅ 2026-08-26 |
+| SEO framework | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ fixed 2026-08-26 | ✅ fixed 2026-08-26 |
+| Security headers + CSP | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 2026-08-26 | ✅ 2026-08-26 |
+| Alt text on every image | (not separately tracked) | (not separately tracked) | (not separately tracked) | (not separately tracked) | (not separately tracked) | (not separately tracked) | ✅ fixed 2026-08-26 | ✅ fixed 2026-08-26 |
+| Data injectability | 2 minor gaps (deferred) | n/a (real content) | 2 minor gaps (deferred) | n/a (real content) | ✅ fixed 2026-08-24 | n/a (real content) | ✅ fixed 2026-08-26 | n/a (real content) |
+| Demo `site` = real URL, not example.com | n/a | ✅ | n/a | ✅ | n/a | ✅ | n/a | ✅ fixed 2026-08-26 (was example.com) |
 
 `n/a` = the injectability check is about the *base* template only; a
 `-demo` repo has real content by design, so it isn't re-checked the same
@@ -196,6 +197,49 @@ new siteData fields (`introPrefix`/`introConnector`/`introEmPrefix`/
 matching the file's existing convention. Demo's rendered copy confirmed
 byte-identical in a fresh build — pure refactor, no visual change.
 
+**#4's findings (2026-08-26, triggered by a live SEOQuake/Screaming Frog
+crawl of `template-4-demo.vercel.app`, not a code-only audit):**
+- `template-4-demo/astro.config.mjs`'s `site` was still the placeholder
+  `https://example.com` — root cause of both a missing sitemap and a
+  missing/wrong canonical on the crawled site, since canonical, OG URLs,
+  JSON-LD, the sitemap, and `robots.txt`'s `Sitemap:` line all derive
+  from this one value. **Fixed** — set to the real deployed URL,
+  rebuilt, confirmed live in `dist/`.
+- `llms.txt.ts` **did not exist at all** in either #4 repo — deferred at
+  scaffold time pending `siteData.ts`, then never actually built once
+  that landed. **Fixed** — added following #3's homepage-only pattern,
+  synced to both repos.
+- Two real alt-text gaps (Eli's own pass, not a crawler finding):
+  `Hero.astro`'s main photo and all 3 `VideoFeatureSection.astro`
+  poster images had `alt=""` despite being real content. **Fixed** —
+  added `imageAlt`/`posterAlt` props following #1/#2's `AboutHero.astro`
+  convention. One background photo (`FeatureSplitSection.astro`'s
+  overlay `feature__bg`) correctly keeps `alt=""` — genuinely
+  decorative, documented inline.
+- Data injectability audited 2026-08-26 (full component read, not just
+  grep). `SiteFooter.astro`'s columns checked against the exact #1/#2
+  baseline bug first — correctly clean here. **6 real violations found
+  and fixed:** `index.astro` hardcoded `imageAlt` literals for 5 real
+  photos (skinServices/about/wellness/mindServices/sisterBrandTeaser)
+  instead of sourcing from `siteData` — added `imageAlt` fields to all
+  5 entries and wired them through. `ContactFormSection.astro`'s
+  decorative watermark was a hardcoded `"MD"` literal tied to this
+  client's actual name ("Mind MD") — made it an opt-in `watermarkText`
+  prop (unset in base, `"MD"` in demo to preserve the exact visual).
+  No connective-phrase-pattern gaps found (the #3 gap-class) — every
+  multi-prop heading composition checked out clean.
+
+**Takeaway worth generalizing:** the SEO framework section of this
+checklist was previously being marked "done" off a code-only read (does
+`Layout.astro` wire up canonical/OG/JSON-LD, does `astro.config.mjs` have
+the sitemap integration) without confirming the **actual deployed site**
+resolves correctly — #4's `site` placeholder would have been caught
+immediately by checking a real build's `dist/index.html` or the live
+domain, not just the presence of the code that's supposed to generate it.
+Prefer verifying the live crawl surface (or at minimum a fresh
+`dist/index.html`/`dist/sitemap-index.xml`/`dist/robots.txt`) over
+code-only inspection when re-running §2 on any template going forward.
+
 ---
 
 *Created 2026-08-24 after full audits of templates #1, #2, and #3 all
@@ -205,3 +249,15 @@ have. Use this file instead of re-auditing from scratch — update the
 status table and this section as gaps get fixed or new templates get
 added, and note new findings under the relevant checklist section rather
 than only in conversation.*
+
+*Updated 2026-08-26: added #4/#4-demo to the status table and a new "Alt
+text on every image" row; #4's `site` placeholder, missing `llms.txt`,
+and two real alt-text gaps found and fixed (see the findings block
+above) — added the "verify the live crawl surface, not just the code"
+takeaway so this doesn't recur on future templates. Later the same day:
+ran #4's data-injectability audit (§4) for real, found and fixed 6
+violations (5 hardcoded `imageAlt` literals in `index.astro`, one
+client-name-specific hardcoded watermark) — #4 is now fully clean on
+every section of this checklist except video sources (deliberately
+left as placeholders, Eli's call) and scope (confirmed intentionally
+homepage-only, not pending more pages).*
