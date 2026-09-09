@@ -11,10 +11,11 @@ require spinning up a cross-template comparison audit to answer "is this
 one done." That's the whole point of this file existing — one list,
 checked once per template, instead of N-way comparisons every time.
 
-Most of this is cheap to check (a few commands, a few file reads). Only
-the data-injectability section (§4) requires reading every component, and
-that's the one worth skipping unless something changed since the last
-confirmed-clean pass — see the note at the bottom of that section.
+Most of this is cheap to check (a few commands, a few file reads). §4
+(data injectability) and §5 (graceful omission) both require reading
+every component, and those are the two worth skipping unless something
+changed since the last confirmed-clean pass — see the note at the
+bottom of each section.
 
 ## 1. Build baseline (cheap — run these, nothing else)
 
@@ -132,7 +133,115 @@ components or pages are added, or a shared component
 last confirmed-clean pass, trust the baseline instead of re-reading every
 component again.
 
-## 5. Scope is self-determined, not comparative
+## 5. Graceful omission — "if a piece of content gets dropped, does the site degrade cleanly or render broken UI?"
+
+Added 2026-09-08, driven by the Elementor migration wave: client content
+increasingly arrives via transplant from a messy existing site, filtered
+through an AI audit that flags real problems (wrong-entity content,
+fabricated testimonials, missing photos, compliance issues) — the plan
+is to just drop that content, not force it through. Every template has
+to support "drop this field/array to empty" as a first-class, safe
+operation, not just "field is always populated." This is a **different
+axis than §4** — §4 asks "is the content data-driven," this asks "what
+happens when that data is empty."
+
+**What to check:** for every component that takes an optional-in-practice
+prop (a CTA, a secondary image, a testimonial/stat/FAQ/service array, a
+sub-widget, a whole section), confirm the component/page actually guards
+it — not just "the prop is typed optional," but that an empty/undefined
+value produces **no visible trace**, not a heading floating over nothing,
+an empty carousel with live prev/next controls, or a dead-but-clickable
+filter tab. Reference pattern: `{value && (...)}` for a single optional
+field, `{array.length > 0 && (...)}` wrapping the *entire* section
+(heading + CTA + carousel/grid together, not just the array's own `.map()`)
+for an optional array-driven section.
+
+**Specific gotchas found during the 2026-09-08 pass — check for these by
+name, they're easy to miss even when "the array has a guard":**
+- **Carousel/grid controls surviving an empty array.** The single most
+  common bug this pass — `items.map(...)` inside a `CardCarousel` (or
+  similar) with no `items.length > 0` check anywhere above it renders a
+  heading and fully-functional-looking prev/next arrows around zero
+  cards. Guard the whole section, not just skip an empty `.map()`.
+- **`array &&` is not a length check.** `item.children && (...)` treats
+  `children: []` as truthy (empty array is truthy in JS) — a dropdown/
+  accordion toggle still renders and opens onto nothing. Always
+  `array && array.length > 0 && (...)`, never `array && (...)` alone.
+- **An empty array literal loses its element type in TypeScript, and
+  `satisfies X[]` does NOT fix this.** `items: [] satisfies TestimonialItem[]`
+  looks like it types the array as `TestimonialItem[]`, but `satisfies`
+  only validates assignability — the array's own inferred type stays
+  `never[]`, which silently breaks property access (`item.name`) anywhere
+  it's mapped directly in the same file (not caught if the array is only
+  ever passed through to a typed component prop, since `never[]` is
+  structurally assignable to any array type there — the bug is latent
+  until someone maps it directly). Fix: extract to an explicitly-typed
+  `const` (`const testimonialItems: TestimonialItem[] = [...]`) instead
+  of an inline literal, so `[]` binds to the real type regardless of
+  whether it's populated or emptied.
+- **Filter tabs (a category selector switching which cards show) need
+  the categories array filtered by content, not just each category's
+  own items.** If a category's items get dropped but the category itself
+  still renders a tab, that tab stays live and clickable — selecting it
+  reveals a blank grid. Filter once (`categories.filter(c => c.items.length > 0)`)
+  and use the *same* filtered array for both the tab list and the
+  content grid, so they can't disagree about which categories exist.
+- **A dropped photo needs a real fallback visual state, not just
+  hiding.** When a card's whole layout depends on a background photo
+  (full-bleed image + text overlay), don't just omit the `<img>` — the
+  card needs an alternate flat-background/bordered treatment (often
+  already established elsewhere in the same design, e.g. a sibling card
+  that never had a photo to begin with), or it renders as a blank void
+  with floating text.
+- **Social links need filtering, not just mapping.** `Object.entries(social).map(...)`
+  renders a dead icon button for every key, including blank strings and
+  siteData's own bracket-placeholder convention (`"[TikTok URL]"`).
+  Filter (`href && !href.startsWith("[")`) before mapping, in every
+  component that renders `social` (a project's `Layout.astro` JSON-LD
+  construction and its `SiteFooter.astro` have independently needed this
+  same filter more than once — check both, they can silently disagree).
+
+**Findings baseline (2026-09-08, full read-only audit of `mavan-library`
+and all 4 templates, ~40 findings collapsing into the gotcha list above)
+— every finding fixed and individually verified (real build with real
+content, then the same field actually emptied and rebuilt to confirm
+clean omission, then restored) before this baseline was recorded:**
+`mavan-library` (`Nav.astro`, `PartnershipSection.astro`, `Footer.astro`,
+`TestimonialsSection.astro`, `LogoStrip.astro`), Template #1 (`LogoStrip.astro`,
+`GalleryCategorySection.astro`, `SiteFooter.astro`, `siteData.ts`'s
+array-typing fix, `about/index.astro`, `index.astro`), Template #2
+(`LogoStrip.astro`, `SectionHeading.astro`, `ContactFormSection.astro`,
+`EmbedFrame.astro`, `LocationSection.astro`, `ServiceDetailSection.astro`
+— filters 6 section types uniformly via one `visibleSections` array, not
+just the 2 originally flagged, `SiteFooter.astro`, `TestimonialsSection.astro`,
+plus 7 page files), Template #3 (`ContactFormSection.astro`,
+`WhatWeOfferSection.astro`, `WhyChooseUsSection.astro`,
+`TrainingCoursesSection.astro`, `GallerySection.astro`,
+`AdvancedTreatmentsSection.astro`, `TestimonialsSection.astro`,
+`ConcernsSection.astro`, `Hero.astro`, `SiteFooter.astro` + the dead
+`shared/Footer.astro`), Template #4 (`Nav.astro`, `SiteFooter.astro`,
+`Hero.astro`, `ContactFormSection.astro`, `TestimonialsSection.astro`,
+`ConcernsSection.astro`'s `visibleCategories` filter — `FeatureSplitSection.astro`/
+`VideoFeatureSection.astro`/`IntroBlurb.astro` spot-checked clean but not
+given the same dedicated full-agent pass as the other repos, worth a
+real pass if this section is ever re-run on #4 specifically).
+
+**Not fixed, deliberately out of scope for this pass:** the §4 baseline's
+already-known/deferred gaps (`SiteFooter.astro`'s "Company" column
+heading, `gallery/[slug].astro`'s hardcoded back-link) — different
+axis, pre-existing, still backlogged per Eli's original call. Template #1's
+`SiteFooter.astro`'s `legalLinks` (empty `<ul>`, no visible layout
+break) and Template #2's `GallerySection`/`ServicesSection` (their
+array IS the entire page's content, not an optional sub-section — closer
+to "no page" than "broken section," not a real instance of this
+pattern).
+
+**When to re-run this section:** same rule as §4 — after new
+template-specific components/pages are added, or a shared component
+changes. If nothing's changed since a template's last confirmed-clean
+pass, trust this baseline.
+
+## 6. Scope is self-determined, not comparative
 
 This template's required page tree, section depth, and component set are
 whatever its own Figma/brief actually calls for — full stop. Do not use
@@ -145,7 +254,7 @@ stayed homepage-only by design; treating that as an automatic gap versus
 #1/#2's 7-page scope was a real mistake caught and corrected 2026-08-24 —
 see `project_mavan_template3` memory. Don't repeat it.)
 
-## 6. Demo-repo specifics (`-demo` repos only)
+## 7. Demo-repo specifics (`-demo` repos only)
 
 - [ ] `astro.config.mjs`'s `site` value is the real deployed URL (Vercel
       preview or real client domain), not the `example.com` placeholder
@@ -166,6 +275,7 @@ see `project_mavan_template3` memory. Don't repeat it.)
 | Security headers + CSP | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 2026-08-26 | ✅ 2026-08-26 |
 | Alt text on every image | (not separately tracked) | (not separately tracked) | (not separately tracked) | (not separately tracked) | (not separately tracked) | (not separately tracked) | ✅ fixed 2026-08-26 | ✅ fixed 2026-08-26 |
 | Data injectability | 2 minor gaps (deferred) | n/a (real content) | 2 minor gaps (deferred) | n/a (real content) | ✅ fixed 2026-08-24 | n/a (real content) | ✅ fixed 2026-08-26 | n/a (real content) |
+| Graceful omission | ✅ fixed 2026-09-08 | (not yet re-checked) | ✅ fixed 2026-09-08 | (not yet re-checked) | ✅ fixed 2026-09-08 | (not yet re-checked) | ✅ fixed 2026-09-08 (3 components spot-checked only, not full pass) | (not yet re-checked) |
 | Demo `site` = real URL, not example.com | n/a | ✅ | n/a | ✅ | n/a | ✅ | n/a | ✅ fixed 2026-08-26 (was example.com) |
 
 `n/a` = the injectability check is about the *base* template only; a
@@ -261,3 +371,13 @@ client-name-specific hardcoded watermark) — #4 is now fully clean on
 every section of this checklist except video sources (deliberately
 left as placeholders, Eli's call) and scope (confirmed intentionally
 homepage-only, not pending more pages).*
+
+*Updated 2026-09-08: added §5 "Graceful omission" (renumbering the old
+§5/§6 to §6/§7) — a new axis distinct from §4, driven by the Elementor
+migration wave's "audit finds bad client content, we just drop it"
+workflow. Full pass across `mavan-library` and all 4 base templates
+(not the `-demo` repos — real content doesn't need this check the same
+way, same `n/a` logic as §4), ~40 findings fixed and individually
+verified. See §5's own findings-baseline block for the full file list
+and the specific gotcha patterns worth checking by name on any future
+audit, rather than re-discovering them from scratch.*
