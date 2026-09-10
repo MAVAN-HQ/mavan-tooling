@@ -195,9 +195,21 @@ the site. For every page representing a high-cost/high-consideration
 service (implants, full-mouth reconstruction, any procedure in the
 thousands of dollars), check:
 
-- [ ] **No lorem ipsum or placeholder text live in production** — grep the
-      rendered page for it directly, don't assume a "finished-looking"
-      page is actually finished
+- [ ] **No lorem ipsum or placeholder text visible in production** — grep
+      the rendered HTML for it, then **verify it's actually visible before
+      escalating it** (`offsetParent === null` or computed
+      `display`/`visibility` via the Browser pane's `javascript_tool` —
+      don't stop at raw source presence). Real finding on 2026-09-09: a
+      49-page sitewide "lorem ipsum" match on mydentaltouch.com turned out
+      to sit inside a container classed `elementor-hidden-desktop
+      elementor-hidden-laptop elementor-hidden-tablet elementor-hidden-mobile`
+      — hidden on every breakpoint, never seen by a real visitor. Confirmed
+      via computed style on two separate pages before downgrading it from
+      "critical sitewide bug" to "minor dead-markup cleanup." A `grep` hit
+      in curl'd HTML is a lead, not a finding — the same
+      verify-before-trusting-source discipline as
+      [[feedback_figma_verify_visible_sections]], applied to live sites
+      instead of Figma exports.
 - [ ] **Cost/financing information present** — a range, financing
       mention, or at minimum a clear "consultation for pricing" - silence
       on cost for a $10k+ procedure is a real conversion gap, not neutral
