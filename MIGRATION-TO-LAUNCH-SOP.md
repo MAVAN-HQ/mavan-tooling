@@ -53,16 +53,18 @@ itself.
 | 1 | Baseline audit (legacy site) | Baseline findings (often pre-done) | 2–4 hr |
 | 2 | Build audit & migration diff | Published audit artifact | 3–5 hr |
 | 3 | Remediation | Fix commits + annotated artifact | 4–12 hr |
-| 4 | siteData conversion | Typed content model + converted build | **TBD — see Open Decisions** |
-| 5 | CMS integration | Live CMS + editor handover | **TBD — see Open Decisions** |
+| 4 | siteData conversion | Typed content model + converted build | **TBD — first cycle** |
+| 5 | CMS integration | Live CMS + editor handover | **TBD — first cycle** |
 | 6 | Pre-launch verification | Go/no-go record | 2–3 hr |
 | 7 | DNS cutover | Live site | 1–2 hr + monitoring |
 | 8 | Post-launch watch | 30-day confirmation | ~2 hr spread over 30 days |
 
 Estimates are per site, for a site of roughly mydentaltouch's size (196
 routes). They assume Phase 1 was already run as part of the portfolio-wide
-pre-scan. Phases 4 and 5 are unestimated pending the scope decision — putting
-a number on them before that decision lands would be inventing one.
+pre-scan. Phases 4 and 5 stay unestimated until one client has actually been
+through them — their scope is settled, but nobody has run the work, and Phase
+4's tooling cost lands almost entirely on the first site, so even that first
+measurement will overstate sites two through forty-five.
 
 ---
 
@@ -203,9 +205,28 @@ cycle:
 - **Analytics & tracking survival** — GA4, GTM, conversion events, call
   tracking, pixels. A technically perfect migration that silently drops
   conversion tracking is a real business failure that no other check catches.
-- **Forms & booking paths** — every form submits somewhere real and the
-  submission is confirmed received, not just "the form posted." Third-party
-  booking links (NexHealth, etc.) resolve to the right practice.
+- **Forms & booking paths** — **assume these are dead on arrival and treat
+  wiring them as remediation work, not verification.** Checked on mydental's
+  built output, the forms carry no `action`, no `method`, and no JS handler:
+
+  ```html
+  <form class="contact-panel__form stack stack--lg" data-form="contact">
+  <form class="newsletter__form">
+  ```
+
+  A visitor submits and nothing happens. The old site handled submissions
+  through a WordPress plugin, which the migration does not replace. For a
+  practice, the contact form *is* the conversion path — shipping this unwired
+  loses patients silently, and no other check in this SOP would catch it.
+
+  The standard is **webhook → Zapier → GHL** (settled 2026-09-14). Per site:
+  wire every form to the hook, confirm a real submission lands in GHL, point
+  success at the existing thank-you routes (`/form-thank-you/`,
+  `/booking-thank-you/`), add `hooks.zapier.com` to `connect-src` and
+  regenerate the CSP, and **run a production build before committing** so the
+  CSP hashes stay in sync. See open decision 5 on hardening the hook against
+  scraping. Separately, confirm third-party booking links (NexHealth, etc.)
+  resolve to the right practice.
 - **Console/runtime health** — zero unexplained errors; accordions,
   carousels, mobile menu, modals actually function when clicked.
 - **Staging/legacy leakage** — no `.vercel.app`, `localhost`, or old-domain
@@ -307,8 +328,11 @@ the import provenance record and the sha256 chain back to the source, and it's
 the only way to prove later what the original site actually said. It stops
 being the render source; it stays as the audit trail.
 
-Out-of-scope routes keep the existing imported render path untouched until the
-scope decision lands (see Open Decisions).
+Scope is everything, in two shapes (settled 2026-09-14). Money pages convert to
+structured `siteData` fields as above. Blog posts and archives convert to an
+Astro content collection — title, date, body, image — rather than being forced
+into named fields, which is both less work and the correct shape for a long
+body. Both end up client-editable; the split is about content shape, not access.
 
 **4.4 — Prove no regression by output diff.** Capture `dist/` before
 conversion, convert, rebuild, and diff the two trees. The target is
@@ -350,8 +374,9 @@ Ranked by actual cost, not by how alarming it sounds:
    automation leverage.
 4. **Bulk editorial content.** 100+ blog and archive routes hold rich HTML
    bodies, not structured fields. Forcing those into named `siteData` fields
-   is the wrong shape; they belong in an Astro content collection. This is
-   precisely what Open Decision 1 turns on.
+   is the wrong shape; they belong in an Astro content collection, which is
+   what the settled scope decision specifies. Converting them is still real
+   work — it's just the cheaper kind.
 5. **Non-mapped ledger entries.** `hidden` (52) and `shell` (2) statuses must
    stay hidden and shell. They are easy to lose in a bulk rewrite and their
    loss is visible immediately.
@@ -412,8 +437,11 @@ transforms, and responsive `srcset` has to be rebuilt deliberately rather than
 inherited. **This also changes the Content Security Policy** — the CMS's CDN
 domains have to be added, and the build's CSP generation
 (`scripts/generate-csp.js` in mydental) re-run and verified before commit.
-Decide per site whether images stay in-repo (simpler, better optimization,
-not client-editable) or move to the CMS (client-editable, more moving parts).
+**Default is images in the repo** (settled 2026-09-14) — simpler, better
+optimization, and it keeps Sanity's bandwidth allowance out of the cost model
+entirely. The trade is that clients can't swap their own photos; see open
+decision 3, where the recommended resolution is a hybrid — repo for layout and
+background imagery, CMS-hosted for the few fields clients actually touch.
 
 **5.6 — Guardrails and editor handover.** Roles and permissions; what's
 editable versus locked; preview; and a short written handover for whoever at
@@ -691,9 +719,11 @@ regressions surface against real traffic.
 | Who | Owns |
 |---|---|
 | Jesse | The migration itself, up to handoff |
-| Eli | Phases 0–8: audit, remediation, conversion, CMS, cutover |
-| Julia | CMS product evaluation (Sanity); the 301 list and the canonical list, per site |
-| Andrew | Client communication; the scope decision in Open Decisions |
+| Eli | Phases 0–8: audit, remediation, conversion, CMS. Executes the DNS cutover; tracks each site's 30-day decommission date |
+| Julia | CMS product evaluation (Sanity); the 301 list and the canonical list, per site; the dataset-ACL question |
+| Andrew | Client communication; registrar access per client; editor-profile assignment |
+| Eli + Andrew | Vercel observability snippet and Sentry (or equivalent) |
+| Julia / account holder | GA4, GTM, and pixel inventory per client — Phase 3's tracking check depends on it |
 | Christel | Client-facing reporting off the published audit artifacts |
 
 ---
@@ -715,42 +745,104 @@ record of what was found and what was done.
 
 ---
 
+## Settled decisions
+
+Recorded 2026-09-14 so they don't get re-litigated later.
+
+**Form backend — webhook → Zapier → GHL.** One standard across the wave, not
+per site. See Phase 3 for the implementation notes; two things matter at build
+time — the webhook URL is scrapeable from client-side JS unless it's proxied,
+and both `hooks.zapier.com` and any Sentry endpoint need adding to `connect-src`
+in the CSP.
+
+**CMS content scope — everything editable, in two content shapes.** This
+supersedes the earlier "tiered vs. everything" framing, which conflated *shape*
+with *access*:
+
+- **Money pages** (home, about, services, contact, locations) → structured
+  fields: heading, CTA, image, service list. The right shape for a page with a
+  designed layout.
+- **Blog posts and archives** → a content collection: title, date, body, image.
+  One repeating shape.
+
+Both are fully client-editable. Blog bodies are deliberately *not* modelled as
+structured `siteData` fields — a 900-word post body isn't a set of named fields,
+and forcing it into that shape is both more work and worse to edit. Narrowing
+what's editable later is Studio permissions and desk structure, not a rebuild.
+
+**CMS architecture — one Sanity project per client.** See Phase 5. The
+dataset-ACL question remains open (below) and could still change this.
+
+**Images — in the repo by default,** to keep Sanity's bandwidth line at zero.
+Note the tension this creates with "everything editable" — see open decision 3.
+
+**DNS execution — Eli.** Registrar access to be granted per client; Vercel
+access already held. Phase 7 is executed by the person who wrote it.
+
+**Observability split.** Eli and Andrew own the Vercel observability snippet and
+Sentry (or equivalent). Traditional analytics — GA4, GTM, pixels — sit with
+Julia or whoever holds those accounts; Phase 3's tracking-survival check depends
+on getting that inventory per client.
+
+**Old-host decommission.** Eli tracks the 30-day date per site and passes it
+along as each site's work finalises.
+
+---
+
 ## Open decisions
 
-**1. CMS content scope — OPEN, blocking the Phase 4/5 estimates.**
-How much of a migrated site becomes client-editable? mydental has 196 routes,
-most of them blog, archive, and location pages. Three positions:
+**1. Sanity dataset access control.** Can a user be scoped to a single dataset,
+and on which plan? Julia to confirm. This is the one question that settles the
+CMS architecture — if per-dataset ACLs turn out to be available below Enterprise,
+the single-project model comes back and the 45-project admin burden drops
+substantially. Everything in Phase 5's architecture section is provisional until
+this is answered.
 
-- *Tiered* (Eli's recommendation): shell plus money pages — home, about,
-  services, contact, locations — become `siteData`/CMS-driven. Blog and
-  archives become an Astro content collection fed by the CMS. Everything else
-  stays static-imported. Far lower per-site conversion cost.
-- *Everything editable*: all routes get a content model. Maximum client
-  control; the single largest effort driver in this SOP.
-- *Shell and business facts only*: NAP, hours, nav, footer, social, CTAs.
-  Cheapest, and it kills entity bleed — but clients can't edit their own copy,
-  which is probably not what's being asked for.
+**2. The 35 empty CPT singles.** WordPress auto-generated a URL for every
+custom-post-type item, so 22 testimonials and 11 before/after sets each got their
+own address — but the theme never built a single-item template, so those URLs
+return HTTP 200 and render a header, a footer, and zero characters of body. The
+content only ever appears in the grids on `/the-experience/testimonials/` and
+`/the-experience/our-work-of-art/`. Two empty taxonomy archives are the same
+class.
 
-Until this lands, Phases 4 and 5 carry no time estimate.
+Under Julia's "not on the 301 list means keep it" rule, all 35 would be built as
+pages rendering nothing. **The call: 301 them to their parent grids, or let them
+404?** Both are defensible since they carry no content; recommendation is 301 to
+the grids, preserving any link equity. Building them as empty pages is the one
+bad option.
 
-**2. CMS product.** Sanity recommended; Julia evaluating. Needs real pricing
-at ~45 sites before commitment — see the cost shape in Phase 5, and ask about
-an agency/partner arrangement rather than taking self-serve rates.
-WordPress-headless assessed in Phase 5 and not recommended.
+**3. Images vs. full editability — a genuine conflict between two settled
+decisions.** Images in the repo means a client cannot swap their own team photo
+or gallery image; that becomes a MAVAN task. Three resolutions:
 
-**2b. The 35 empty CPT singles.** Under Julia's "not on the 301 list means keep
-it" rule, mydental's 33 empty testimonial/before-after singles and 2 empty
-taxonomy archives would each be built as a page rendering nothing. Needs an
-explicit call from Julia — almost certainly they should redirect to the loop
-grids that publish their content. See Phase 6.
+- *Accept it* — image changes stay a MAVAN service. Cheapest, and most clients
+  rarely change photos.
+- *Hybrid (recommended)* — repo for layout and background images, Sanity CDN for
+  the few fields clients actually touch (team, gallery). Low bandwidth, editing
+  preserved where it matters.
+- *All Sanity* — full editability; bandwidth becomes a live cost line.
 
-**3. Per-site pricing and timeline.** Derives from (1). Worth running the
-first full cycle — through Phases 4 and 5 — on one client before quoting the
-wave, since Phase 4's tooling cost lands almost entirely on the first site.
+Worth deciding once as standing policy rather than per site.
 
-**4. Rollout order across the ~45 sites.** Not addressed here. Worth deciding
-whether the first CMS-integrated client is a low-risk site deliberately chosen
-as a pilot.
+**4. Editor profiles.** Seat allocation varies by client — some MAVAN-managed,
+some shared, some client-managed. Rather than bespoke configuration per project,
+define two or three standard profiles and assign each client to one. Forty-five
+bespoke seat configurations is not administrable; three profiles is. This also
+determines where in the Phase 5 cost model each site lands.
+
+**5. Form-submission hardening.** Posting directly to a Zapier catch hook from
+the browser exposes the webhook URL to scraping, which means spam into GHL.
+Minimum viable is a honeypot field; the more robust option is a Vercel
+serverless function as intermediary, keeping the URL server-side and allowing
+validation. Decide before the first launch, not after the first spam run.
+
+**6. Per-site pricing and timeline.** Worth running the first full cycle —
+through Phases 4 and 5 — on one client before quoting the wave, since Phase 4's
+tooling cost lands almost entirely on the first site.
+
+**7. Rollout order across the ~45 sites.** Worth deciding whether the first
+CMS-integrated client is a low-risk site deliberately chosen as a pilot.
 
 ---
 
