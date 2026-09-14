@@ -17,6 +17,47 @@ at the Astro build at all — auditing the migration with the old site's
 problems fresh in mind (not from memory of "what's usually wrong with
 Elementor sites") is what makes the diff actually trustworthy.
 
+**Two-phase mode, added 2026-09-13 — this checklist now explicitly
+supports running baseline-only, ahead of a migrated build existing.**
+Eli's actual plan across the ~45-site wave: pre-scan every legacy
+Elementor site now (Phase A), independent of whether Jesse has gotten to
+that client yet, then come back per-site whenever a build is actually
+ready and run Phase B (the Astro side + the §7 diff) against the
+already-completed Phase A baseline. This checklist was originally written
+assuming both sides happen back-to-back in one sitting — it still works
+that way for a single client, but at portfolio scale the two phases will
+usually be separated by weeks or months, sometimes by whoever's running
+each phase.
+
+- [ ] **Phase A (baseline-only) — run §0-§6d against the live Elementor
+      site.** Skip §7-§10 entirely (no migrated build exists yet to
+      diff/track/redirect). §8 (analytics) and §9 (forms) are worth
+      capturing on the baseline anyway if convenient - it's useful to
+      know what conversion tracking currently exists, so Phase B can
+      check whether the migration preserved it, not just whether the
+      new build has *any* tracking at all.
+- [ ] **Phase A must capture hard evidence, not just conclusions** -
+      exact field dumps (schema JSON, not "schema looks fine"), exact
+      numbers (PSI scores, byte counts, page counts), and screenshots
+      where practical. The live WordPress site can change, get "fixed"
+      by someone else, or go offline entirely by the time Phase B runs -
+      Phase A is the only chance to capture what it actually looked like
+      *before* migration. A conclusion without the evidence behind it is
+      useless once the source is gone.
+- [ ] **Output naming for portfolio scale**: one Artifact + one memory
+      file per client, named consistently (`<client-slug>-audit`), same
+      pattern already used this wave (`project_mydentaltouch_audit.md`,
+      etc.) - so Phase B can find and build on the right Phase A record
+      without re-deriving it. State clearly at the top of the Phase A
+      report that it's baseline-only and Phase B is pending.
+- [ ] **Phase B (migration diff)** - once a build exists, re-run the full
+      checklist against the Astro build (§0-§6d again, this time on the
+      new domain), then run §7-§10 to produce the actual diff/disposition
+      table against the Phase A record. Don't re-audit the baseline from
+      scratch at this point - trust Phase A's captured evidence unless
+      something suggests the live site changed since (worth a quick spot
+      re-check of 2-3 pages if a lot of time has passed).
+
 ## 0. Full site crawl (do this before anything else, both sides)
 
 Enumerate every real, unique page — not the XML sitemap, the actual nav +
@@ -125,6 +166,30 @@ explicitly, on both the baseline and the migrated build:
 *No Frog/SEMrush needed here* — Google's own Rich Results Test
 (`search.google.com/test/rich-results`) is free and validates this
 directly; use it via the Browser pane against both live URLs.
+
+> **CRITICAL, added 2026-09-11 — a `curl` fetch of the baseline can miss
+> the real schema entirely, and will confidently report "missing" fields
+> that actually exist.** On mydentaltouch.com, a plugin injects the
+> site's actual, complete `Dentist` schema (correct `sameAs`, `slogan`,
+> `description`, `medicalSpecialty`, `hasMap` — all of it) via JavaScript
+> *after* page load. Every earlier pass on this client used `curl` against
+> the static HTML and never saw any of it — leading directly to a wrong
+> "Regressed" disposition on a `sameAs` finding that was actually carried
+> over from the baseline the whole time. **Always extract the real schema
+> by executing JS in a live browser, not by parsing raw HTML fetched via
+> `curl`/`WebFetch`:**
+> ```js
+> // Browser pane javascript_tool, on the live baseline URL
+> [...document.querySelectorAll('script[type="application/ld+json"]')]
+>   .flatMap(s => { try { const p = JSON.parse(s.textContent);
+>     return p['@graph'] ?? [p]; } catch { return []; } })
+> ```
+> Do this **before** concluding any schema field, type, or property is
+> "missing" on a baseline site — a curl-based negative result is not
+> trustworthy evidence on its own. This generalizes beyond schema too:
+> any SEO/schema plugin (Yoast, RankMath, a custom theme function) can in
+> principle inject markup client-side: treat a curl-only "absent" finding
+> for structured data as provisional until checked live.
 
 ## 4. Performance / Core Web Vitals
 
@@ -335,6 +400,229 @@ disposition on the Astro side:
       dropped / missing) — no page silently falls through the cracks
       between the two audits
 
+## 8. Analytics & tracking survival
+
+Added 2026-09-10, cross-referenced against a GPT-generated comprehensive
+migration-audit reference Eli brought in — this whole category was
+previously **unchecked on every client audited this wave**. A technically
+perfect migration that silently drops conversion tracking is a real,
+serious business failure that won't show up in any check above — it just
+means Andrew/the client goes blind on the new site's actual performance
+post-launch, discovered weeks later instead of at audit time.
+
+- [ ] **GA4 Measurement ID correct and tag actually installed** on the
+      migrated build (check the outgoing network requests, not just the
+      presence of a script tag — a wrong/placeholder ID installs cleanly
+      and fires nothing real)
+- [ ] **Pageviews actually fire** on navigation (check via
+      `read_network_requests` for the `collect`/`g/collect` GA4 endpoint,
+      or GA4 DebugView if access exists)
+- [ ] **Key conversion events fire** — form submit, phone click, booking-
+      widget click — whatever the baseline site was tracking as a
+      conversion, confirm the equivalent action on the new build still
+      fires something
+- [ ] **GTM container correct**, if the client uses Tag Manager separately
+      from bare GA4 — wrong/missing container is the same silent-failure
+      shape as the GA4 ID check above
+- [ ] **No duplicate/conflicting analytics installation** (both an old
+      hardcoded GA snippet AND a new one firing simultaneously — inflates
+      and corrupts every number downstream)
+
+## 9. Forms & conversion-path functional QA
+
+Added 2026-09-10, same source. **Never actually tested on any client this
+wave** — every audit so far has been read-only (curl, DOM inspection,
+schema validation). A contact form that looks correct in the rendered
+HTML but silently fails to submit is invisible to every check in §1-§7
+above, and is one of the most damaging possible launch defects for a
+local-service business.
+
+- [ ] **Submit a real test submission through every form on the site** —
+      not a visual/HTML inspection, an actual submit with real (test)
+      data
+- [ ] Required-field and client-side validation actually blocks bad input
+- [ ] Confirmation/thank-you state displays correctly after a real submit
+- [ ] **The submission actually arrives somewhere** — ask the client/
+      Andrew to confirm a notification email or CRM entry was received;
+      this can't be verified from outside without a receiving party
+- [ ] No leftover dependency on a WordPress form plugin (e.g. a form
+      action still POSTing to a `wp-admin/admin-ajax.php` endpoint that
+      no longer exists post-migration)
+- [ ] **Booking/scheduling widgets tested end-to-end**, not just linked —
+      methodology already proven on this client (NexHealth click-through,
+      §01) — apply it as a standard check going forward, not a one-off
+
+## 10. DNS & email-continuity safety for cutover
+
+Added 2026-09-10 — directly prompted by this client's actual launch plan
+(DNS for the production domain gets repointed at the new build, replacing
+the old install at the same address). **This is a completely different
+failure category from everything else in this checklist** — a careless
+DNS cutover can break the practice's email while leaving the website
+itself perfectly fine, and nothing in §1-§9 would ever catch it.
+
+- [ ] **Record the existing DNS zone before any change** — A/AAAA, CNAME,
+      MX, TXT (including SPF), DKIM, DMARC, and any other
+      verification/service-specific records
+- [ ] **Confirm the cutover plan does not touch MX/SPF/DKIM/DMARC unless
+      intentional** — website hosting and email routing are separate
+      systems that happen to share a domain; a DNS change scoped to "point
+      the site at Vercel" should not silently repoint or drop mail records
+- [ ] Cutover plan documented (what changes, in what order)
+- [ ] Rollback plan documented (how to revert if something breaks)
+- [ ] Old hosting kept available long enough for rollback if practical
+
+## 11. Runtime/console health
+
+Added 2026-09-10 — cheap to check, high-value, never explicitly done on
+any client's migrated build this wave so far.
+
+- [ ] **Zero unexplained browser console errors** on a representative
+      sample of pages (check via `read_console_messages` in the Browser
+      pane — this has been available the whole time and simply hasn't
+      been used for this purpose yet)
+- [ ] No missing JS chunks or Astro hydration errors
+- [ ] Interactive widgets (accordions, carousels, mobile menu, modals,
+      lightboxes) actually function when clicked, not just visually
+      present in the DOM
+
+## 12. Staging/legacy leakage sweep
+
+Added 2026-09-10. Previously only checked opportunistically (the
+`Astro.site`/canonical-domain finding on this client was found while
+looking at something else, not via a dedicated sweep) — worth running as
+its own explicit pass rather than relying on catching it by chance.
+
+- [ ] Grep the rendered output of a full site crawl for the preview
+      domain (`.vercel.app`), `localhost`, and the old production domain
+      where it would be inappropriate — across **images, forms, API
+      calls, JS, CSS, and JSON**, not just canonical/OG/sitemap tags
+      (which is all that's been checked so far)
+- [ ] **No accidental WordPress hotlinks** — confirm the migrated build's
+      images route through its own asset pipeline (`/_astro/`,
+      `/_vercel/image`) and never silently reference
+      `wp-content/uploads/...` on the old domain
+- [ ] No leftover WordPress/Elementor artifacts in the new build's own
+      output (`wp-json`, `?attachment_id=`, `?p=`, shortcode remnants)
+
+## 13. Open Graph / social metadata
+
+Added 2026-09-10 as its own named section — previously only caught
+`og:site_name` by chance while investigating cross-brand bleed (§6d), not
+via a systematic pass.
+
+- [ ] `og:title`, `og:description`, `og:image`, `og:url`, `og:type`
+      present and correct on representative pages
+- [ ] Twitter/X card metadata present
+- [ ] Social image actually resolves (not a broken/placeholder path) and
+      is a reasonable size for share previews
+- [ ] None of the above reference a staging domain
+
+## 14. Content parity beyond the high-value pages
+
+Added 2026-09-10 — §6a already covers deep content-depth checks on
+high-value procedure pages specifically; this extends the same discipline
+sitewide to content categories that don't get the same scrutiny but are
+just as easy to silently drop or let drift out of sync:
+
+- [ ] **Business hours match** between the baseline and the migrated
+      site — footer, schema (`openingHoursSpecification`), and any
+      dedicated contact/hours page — not yet explicitly checked on any
+      client this wave
+- [ ] Legal/disclaimer copy preserved verbatim where it's required to be
+      (not just "a privacy policy exists," §5 — the actual disclaimer
+      text on service pages, if any)
+- [ ] Footer copy (address, hours, legal links) matches
+- [ ] Team/staff/provider bios and credentials preserved, not dropped or
+      genericized in the migration
+- [ ] **Blog/post body-content sweep, added 2026-09-11** — cheap and has
+      found a real issue every time it's been run: check every blog post
+      for a suspiciously short/empty body (word count near zero, or body
+      text matching a known sidebar/widget pattern like a contact-form's
+      field labels instead of real article prose). On mydentaltouch.com
+      this found 17 of 94 posts with zero real article content — but
+      **verify against the live baseline before calling it a migration
+      bug**: on that client, all 17 were *already* empty on the baseline
+      (a batch of stub posts from a single day years earlier that never
+      got written) — carried over faithfully, not caused by the
+      migration. The check is generalizable and worth running by
+      default; the disposition (carried-over vs. regressed) is never
+      assumable, always verify live on both sides before reporting.
+
+## 15. Severity tagging
+
+Added 2026-09-10. Structural change, not a new check: tag every finding
+with a severity (**BLOCKER** / **HIGH** / **MEDIUM** / **LOW**) alongside
+its §7 disposition (Fixed/Carried-over/Regressed/Dropped). The disposition
+answers "what happened," severity answers "does this stop launch" — a
+report with fifteen findings and no severity tier makes it hard to hand
+Andrew a clear READY / NOT READY read at a glance. Reserve BLOCKER for
+things in the same category as broken forms, lost tracking, or DNS/email
+risk (§8-§10) — not for content-depth or schema-completeness gaps, which
+are real but don't justify holding a launch.
+
+## 15b. If source-repo access exists, check for the developer's own QA artifacts first
+
+Added 2026-09-11. When Phase B includes real access to the migrated
+site's repo (not just the live URL), check for existing audit/QA output
+before re-deriving everything from scratch — a developer's own tooling
+may have already surfaced things worth cross-referencing:
+
+- [ ] Search the repo for an `artifacts/`, `reports/`, or similar
+      directory - route inventories, visual-regression reports, and
+      build-time audits are all real signal if present, generated by
+      tooling that already ran against the actual build (not something
+      to blindly trust, but a genuine head start)
+- [ ] **A real, reproducible browser console error was found this way**
+      on mydentaltouch.com - present in the developer's own automated
+      visual-audit JSON (`consoleErrors` field per record), invisible to
+      every check this checklist runs from outside the repo. Worth
+      grepping for `consoleErrors`/`networkFailures`-shaped fields in any
+      found artifact even if the artifact's main purpose is something
+      else (that one was a visual-regression report, not a console-error
+      report specifically)
+- [ ] Don't over-trust automated visual-similarity scores at face value -
+      a large batch of below-threshold results is often the tool's own
+      strict pixel/crop-alignment methodology catching trivial spacing
+      drift, not real bugs. Spot-check the worst few directly in a real
+      browser before treating the whole list as confirmed defects; only
+      escalate ones that look genuinely broken to the eye
+
+## 16. Final pre-DNS-cutover pass
+
+Added 2026-09-10, to run immediately before go-live on any client whose
+launch plan is a hard DNS cutover (confirm this is actually the plan
+before assuming it — see the retracted `Astro.site` finding on this
+client, §06 of its report, where the wrong assumption stood unchallenged
+for several audit passes):
+
+- [ ] Clean production build succeeds from a clean environment
+- [ ] Re-run §1 (crawl/indexation), §3 (schema), §8 (analytics), §9
+      (forms), §10 (DNS/email), and §11 (console) one more time against
+      the actual final build being deployed — not the build that was
+      audited days or weeks earlier
+- [ ] DNS records backed up before the change goes out
+- [ ] Rollback procedure understood by whoever is executing the cutover
+
+## Explicitly out of scope, not added here
+
+Two categories from the reference doc are deliberately not folded into
+this checklist:
+
+- **GSC baseline export, SEMrush rankings/backlinks, SERP keyword
+  baseline** — Eli's own standing scope call for this audit wave:
+  technical SEO first, rankings/backlinks later. These aren't gaps in
+  execution, they're the *next planned phase* (Eli: "were probably gonna
+  do more GSC data work" — 2026-09-10) — worth having this checklist's §8
+  (analytics survival) solid *before* that phase starts, since broken
+  tracking would corrupt whatever GSC/GA4 baseline gets pulled next.
+- **Cross-browser/device QA, responsive visual QA at multiple viewports,
+  nav interaction/UX testing, and a full manual accessibility pass**
+  (skip links, focus trapping, 200% zoom) — real and valuable, but a
+  different discipline (functional/UX QA) than the technical-SEO brief
+  this checklist has been built for. Flag to Eli/Andrew if this should
+  become part of the standard audit rather than adding it unilaterally.
+
 ## Output format
 
 One scorecard per client, structured as: full §0-§6 findings for the
@@ -354,3 +642,14 @@ a paid crawler would add signal free tools can't fully replicate (bulk
 cross-site trend reporting across the full ~45-site migration wave is
 the main one — this checklist is built for one-site-at-a-time depth, not
 portfolio-wide dashboards).*
+
+*Updated 2026-09-13 after a full real cycle on mydentaltouch.com —
+audit through Phase A/B split, live schema execution, and into actual
+fix-execution against Jesse's repo. Every section above has now been
+proven against a real client, not just theorized — the JS-injected-schema
+warning (§3) and the two-phase mode at the top are the two changes most
+likely to matter immediately for the next ~44 sites. If a batch-scan
+across many baseline sites at once turns out to be worth automating
+rather than running one at a time in chat, a Workflow script is a
+reasonable next tool to reach for — not built yet, worth asking for
+specifically if the manual per-site pace becomes the bottleneck.*
