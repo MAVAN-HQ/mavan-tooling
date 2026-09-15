@@ -441,7 +441,11 @@ domains have to be added, and the build's CSP generation
 optimization, and it keeps Sanity's bandwidth allowance out of the cost model
 entirely. The trade is that clients can't swap their own photos; see open
 decision 3, where the recommended resolution is a hybrid — repo for layout and
-background imagery, CMS-hosted for the few fields clients actually touch.
+background imagery, CMS-hosted for the few fields clients actually touch — plus
+a newer, complementary option (proposed 2026-09-15, not yet built): a
+manifest-backed image picker in the Studio that lets anyone re-select among
+images already in the repo with zero CDN cost, without solving brand-new
+uploads.
 
 **5.6 — Guardrails and editor handover.** Roles and permissions; what's
 editable versus locked; preview; and a short written handover for whoever at
@@ -814,16 +818,38 @@ bad option.
 
 **3. Images vs. full editability — a genuine conflict between two settled
 decisions.** Images in the repo means a client cannot swap their own team photo
-or gallery image; that becomes a MAVAN task. Three resolutions:
+or gallery image; that becomes a MAVAN task. Four resolutions now on the table:
 
 - *Accept it* — image changes stay a MAVAN service. Cheapest, and most clients
   rarely change photos.
-- *Hybrid (recommended)* — repo for layout and background images, Sanity CDN for
-  the few fields clients actually touch (team, gallery). Low bandwidth, editing
-  preserved where it matters.
+- *Hybrid (recommended for genuine client uploads)* — repo for layout and
+  background images, Sanity CDN for the few fields clients actually touch
+  (team, gallery). Low bandwidth, editing preserved where it matters.
 - *All Sanity* — full editability; bandwidth becomes a live cost line.
+- *Image catalog/picker, no CDN (proposed 2026-09-15, from the Artis pilot,
+  not yet built anywhere)* — solves the *selection* half of "editable images"
+  without touching the cost model at all. A manifest of everything already in
+  the site's `public/images/` gets published alongside the site itself (e.g.
+  `<site>/images-manifest.json`, regenerated on every normal build - no new
+  infra) and a custom Sanity Studio input component renders it as a
+  searchable thumbnail grid instead of a raw text box, writing the same
+  plain repo-path string on selection. Zero Sanity bandwidth, and a client
+  or editor can freely re-point any image field at anything already
+  uploaded, with none of the current typo-prone "paste a path by hand"
+  friction. Does **not** solve genuinely new photo uploads - a brand-new
+  file still needs a developer to land it in the repo first - so it's a
+  complement to the hybrid option above (or to "accept it"), not a
+  replacement: use this for the ergonomics of swapping among existing
+  images, and the hybrid/all-Sanity CDN path only for the specific fields
+  where a client needs to upload something that doesn't exist yet.
+  Deliberately generic if built - a manifest script + one Studio input
+  component, meant to live in `mavan-tooling`/`mavan-library` and be reused
+  by every future Sanity-integrated site, not rebuilt per client.
 
-Worth deciding once as standing policy rather than per site.
+Worth deciding once as standing policy rather than per site. The catalog/
+picker option is currently a documented preference, not yet implemented
+anywhere - see the Artis repo's `CMS-PREP-AUDIT.md` for the original
+discussion.
 
 **4. Editor profiles.** Seat allocation varies by client — some MAVAN-managed,
 some shared, some client-managed. Rather than bespoke configuration per project,
