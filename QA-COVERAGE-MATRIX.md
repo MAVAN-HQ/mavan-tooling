@@ -3,6 +3,14 @@
 Status 2026-11-04. Read-only inventory, nothing here is built yet.
 Legend: HAVE = a tool does it now; PART = partly, or only against an artifact baseline; GAP = nothing exists; LATER = blocked until it is wired (forms, tracking, Sanity).
 
+## Design basis (Eli, 2026-11-04)
+The toolset is built around Andrew's Claude Design artifacts used as templates, for BOTH new builds and migrations. Not Figma, not manual-scrape migrations. Jesse is gone; his clone-tool builds are out of scope.
+- Design truth = the artifact render (tagged `data-section` / `data-variant` / `data-slot` / `data-item` per template-spec).
+- Structure truth = template-spec `expected.json` (which sections each page type must contain).
+- Content truth: new build = Julia's sheet + client copy; migration = the old live site, used for content/URL/SEO parity only, never for design.
+- So the baseline for layout/visual checks is always the artifact, and "migration" is just a build whose content slots are filled from the old site.
+Consequences: drop Figma-based and scrape-clone comparisons; `visual-parity-check.js` (live Elementor vs build) is demoted to a content/URL parity helper; the baseline-free fault detector is the safety net for slots filled with real client content, which the artifact never saw.
+
 ## Where the existing tools live
 - Per-repo copies in `artis-new|lhp-new|mavan-new|ivory-new/design/tools/`: `full-audit.cjs`, `parity.cjs`, `box.cjs`, `markup-audit.cjs`, `hover-audit.cjs`, `interaction-tests.cjs`, `site-checks.cjs`, `extra-checks.cjs`, `scroll-containers.cjs`, `render-reference.cjs`.
 - Shared in `migration-tools/`: Playwright, `visual-parity-check.js`, `a11y-scan.js`, `scrollwidth-divergence-scan.js`, `check-h2-contrast-sweep.js`, `dom-measure.js`, `sitewide-parity-scan-*.js` (per client).
