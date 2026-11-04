@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MAVAN QA finding",
+  "description": "One root-cause finding. Every QA tool emits these. Repeats of the same rule on the same component collapse into one finding with many occurrences.",
+  "type": "object",
+  "required": ["id", "rule", "tier", "severity", "summary", "occurrences"],
+  "properties": {
+    "id": { "type": "string", "description": "Stable hash of rule + component key, so reruns match." },
+    "rule": { "type": "string", "description": "Rule id from qa/rules.json, e.g. geo.parent-overflow." },
+    "tier": { "enum": ["fault", "smell"], "description": "fault = objective, may fail a build. smell = report only, never fails." },
+    "severity": { "enum": ["critical", "high", "medium", "low"] },
+    "confidence": { "enum": ["certain", "probable", "possible"] },
+    "baseline": { "enum": ["none", "artifact", "expected-json", "old-site", "prior-build"], "description": "What the check compared against. none = baseline-free fault." },
+    "summary": { "type": "string", "description": "One plain sentence: expected vs actual." },
+    "component": { "type": "string", "description": "data-section/data-variant/data-slot key if tagged, else a stable selector." },
+    "sourceFile": { "type": "string" },
+    "expected": { "type": "string" },
+    "actual": { "type": "string" },
+    "occurrences": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["url", "viewport"],
+        "properties": {
+          "url": { "type": "string", "description": "Page path, never a full URL." },
+          "viewport": { "type": "string", "description": "e.g. 1440x900." },
+          "selector": { "type": "string" },
+          "box": { "type": "object", "properties": { "x": {}, "y": {}, "w": {}, "h": {} } },
+          "evidence": { "type": "string", "description": "Path to screenshot or json under the run folder." }
+        }
+      }
+    },
+    "status": { "enum": ["new", "existing", "fixed", "suppressed"], "default": "new" },
+    "suppression": { "type": "string", "description": "Approved-exception reason, from the component registry. Required when status = suppressed." },
+    "provenance": { "type": "string", "description": "Optional. e.g. 'element present in prior build, absent now'. Captures deleted or relocated things outside the change being made." },
+    "proposedFix":{ "type": "string", "description": "Advice only. Tools never apply fixes." }
+  }
+}
